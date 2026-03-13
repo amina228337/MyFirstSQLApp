@@ -1,162 +1,100 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
-<meta charset="UTF-8">
-<title>Статус группы</title>
-
-<style>
-body{
-    font-family: Arial, sans-serif;
-    background:#f2f2f2;
-    margin:0;
-    display:flex;
-    justify-content:center;
-    padding-top:40px;
-}
-
-.container{
-    width:420px;
-}
-
-.card{
-    background:white;
-    border-radius:10px;
-    padding:20px;
-    margin-bottom:20px;
-    box-shadow:0 2px 8px rgba(0,0,0,0.1);
-}
-
-h2{
-    margin-top:0;
-}
-
-.buttons{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:10px;
-    margin-top:15px;
-}
-
-button{
-    border:none;
-    padding:12px;
-    border-radius:6px;
-    font-size:14px;
-    cursor:pointer;
-}
-
-.study{ background:#28a745; color:white;}
-.coffee{ background:#ffc107;}
-.game{ background:#17a2b8; color:white;}
-.home{ background:#6c757d; color:white;}
-
-.user-item{
-    display:flex;
-    align-items:center;
-    margin-bottom:12px;
-}
-
-.status-dot{
-    width:10px;
-    height:10px;
-    border-radius:50%;
-    margin-right:10px;
-}
-
-.flex-grow{
-    flex-grow:1;
-}
-</style>
-
+    <title>Монитор статусов</title>
+    <style>
+        /* Добавьте немного стилей для красоты */
+        body { font-family: sans-serif; padding: 20px; }
+        .user { display: flex; align-items: center; margin-bottom: 10px; padding: 10px; border: 1px solid #ccc; border-radius: 5px;}
+        .status-dot { width: 15px; height: 15px; border-radius: 50%; margin-right: 10px; }
+        .online { background-color: green; }
+        .offline { background-color: gray; }
+        .busy { background-color: orange; }
+        button { margin-left: 10px; }
+    </style>
 </head>
-
 <body>
+    <h1>Монитор статусов</h1>
+    <div id="users-container">
+        <!-- Сюда будет загружаться список пользователей -->
+        </div>
 
-<div class="container">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // --- ВАЖНО: ВСТАВЬТЕ СВОИ КЛЮЧИ СЮДА ---
+        const SUPABASE_URL = 'https://supabase.com/dashboard/project/ymgsmxwgsqmizwccljfn'; // Вставьте ваш URL
+        const SUPABASE_ANON_KEY = 'bb71dae8-cc67-4b9c-a364-e980f189fe27'; // Вставьте ваш anon/public ключ
+        // -----------------------------------------
 
-<div class="card">
-<h2>Мой профиль</h2>
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-<div id="myInfo">Загрузка...</div>
+        // Функция для загрузки и отображения пользователей
+        async function loadUsers() {
+            const { data: users, error } = await _supabase
+                .from('profiles')
+                .select('*');
 
-<div class="buttons">
-<button class="study" onclick="changeStatus('Учусь','#28a745')">📚 Учусь</button>
-<button class="coffee" onclick="changeStatus('Кофе-брейк','#ffc107')">☕ Кофе</button>
-<button class="game" onclick="changeStatus('В игре','#17a2b8')">🎮 В игре</button>
-<button class="home" onclick="changeStatus('Дома','#6c757d')">🏠 Дома</button>
-</div>
-</div>
+            if (error) {
+                console.error('Ошибка загрузки:', error);
+                return;
+            }
 
-<div class="card">
-<h2>Монитор группы</h2>
-<div id="grouplist"></div>
-</div>
+            const container = document.getElementById('users-container');
+            container.innerHTML = ''; // Очищаем контейнер
 
-</div>
+            users.forEach(user => {
+                const userDiv = document.createElement('div');
+                userDiv.className = 'user';
+                userDiv.id = `user-${user.id}`;
 
-<script type="module">
+                // Определяем класс для точки статуса
+                let statusClass = 'offline';
+                if (user.status === 'online') statusClass = 'online';
+                else if (user.status === 'busy') statusClass = 'busy';
 
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm"
+                userDiv.innerHTML = `
+                    <div class="status-dot ${statusClass}"></div>
+                    <span><strong>${user.username}</strong> (${user.status})</span>
+                    <button onclick="updateStatus('${user.id}', 'online')">Online</button>
+                    <button onclick="updateStatus('${user.id}', 'busy')">Busy</button>
+                    <button onclick="updateStatus('${user.id}', 'offline')">Offline</button>
+                `;
+                container.appendChild(userDiv);
+            });
+        }
 
-const URL = 'https://supabase.com/dashboard/project/ymgsmxwgsqmizwccljfn/editor/17525?schema=public';
-const KEY = '1;
+        // Функция для обновления статуса
+        window.updateStatus = async function(userId, newStatus) {
+            const { error } = await _supabase
+                .from('profiles')
+                .update({ status: newStatus })
+                .eq('id', userId); // Обновляем только пользователя с нужным ID
 
-const supabase = createClient(URL, KEY);
+            if (error) {
+                console.error('Ошибка обновления:', error);
+            } else {
+                // Если все хорошо, перезагружаем список, чтобы увидеть изменения
+                loadUsers();
+            }
+        };
 
-const MY_ID = '4bc56c49c-89f8-47d9-b060-2dbd2439122';
+        // Подписка на изменения в реальном времени (Realtime)
+        _supabase
+            .channel('profiles-changes')
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'profiles' },
+                (payload) => {
+                    console.log('Изменение получено!', payload);
+                    // Здесь можно обновить статус конкретного пользователя на странице,
+                    // не перезагружая весь список. Для простоты сейчас мы просто перезагрузим список.
+                    loadUsers();
+                }
+            )
+            .subscribe();
 
-window.changeStatus = async (text, color) => {
-
-const { error } = await supabase
-.from('profiles')
-.update({ status: text, color: color })
-.eq('id', MY_ID);
-
-if (error) {
-alert("Ошибка! Проверьте RLS политики в Supabase.");
-console.error(error);
-} else {
-fetchGroup();
-}
-
-};
-
-async function fetchGroup() {
-
-const { data, error } = await supabase
-.from('profiles')
-.select('*')
-.order('username', { ascending: true });
-
-if (error) return console.error(error);
-
-const list = document.getElementById("grouplist");
-
-list.innerHTML = data.map(user => `
-<div class="user-item">
-<div class="status-dot" style="background:${user.color || '#ccc'}"></div>
-
-<div class="flex-grow">
-<strong>${user.username}</strong><br>
-<small style="color:#666;">${user.status || 'Статус не задан'}</small>
-</div>
-
-</div>
-`).join("");
-
-const me = data.find(u => u.id === MY_ID);
-
-if (me) {
-document.getElementById("myInfo").innerText = `Вы зашли как: ${me.username}`;
-}
-
-}
-
-fetchGroup();
-
-setInterval(fetchGroup, 5000);
-
-</script>
-
+        // Загружаем пользователей при старте
+        loadUsers();
+    </script>
 </body>
 </html>
