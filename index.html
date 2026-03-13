@@ -1,1 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Монитор статусов</title>
+    <style>
+        /* Добавьте немного стилей для красоты */
+        body { font-family: sans-serif; padding: 20px; }
+        .user { display: flex; align-items: center; margin-bottom: 10px; padding: 10px; border: 1px solid #ccc; border-radius: 5px;}
+        .status-dot { width: 15px; height: 15px; border-radius: 50%; margin-right: 10px; }
+        .online { background-color: green; }
+        .offline { background-color: gray; }
+        .busy { background-color: orange; }
+        button { margin-left: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Монитор статусов</h1>
+    <div id="users-container">
+        <!-- Сюда будет загружаться список пользователей -->
+        </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // --- ВАЖНО: ВСТАВЬТЕ СВОИ КЛЮЧИ СЮДА ---
+        const SUPABASE_URL = 'https://ваш-проект.supabase.co'; // Вставьте ваш URL
+        const SUPABASE_ANON_KEY = 'ваш-анонимный-ключ'; // Вставьте ваш anon/public ключ
+        // -----------------------------------------
+
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Функция для загрузки и отображения пользователей
+        async function loadUsers() {
+            const { data: users, error } = await _supabase
+                .from('profiles')
+                .select('*');
+
+            if (error) {
+                console.error('Ошибка загрузки:', error);
+                return;
+            }
+
+            const container = document.getElementById('users-container');
+            container.innerHTML = ''; // Очищаем контейнер
+
+            users.forEach(user => {
+                const userDiv = document.createElement('div');
+                userDiv.className = 'user';
+                userDiv.id = `user-${user.id}`;
+
+                // Определяем класс для точки статуса
+                let statusClass = 'offline';
+                if (user.status === 'online') statusClass = 'online';
+                else if (user.status === 'busy') statusClass = 'busy';
+
+                userDiv.innerHTML = `
+                    <div class="status-dot ${statusClass}"></div>
+                    <span><strong>${user.username}</strong> (${user.status})</span>
+                    <button onclick="updateStatus('${user.id}', 'online')">Online</button>
+                    <button onclick="updateStatus('${user.id}', 'busy')">Busy</button>
+                    <button onclick="updateStatus('${user.id}', 'offline')">Offline</button>
+                `;
+                container.appendChild(userDiv);
+            });
+        }
+
+        // Функция для обновления статуса
+        window.updateStatus = async function(userId, newStatus) {
+            const { error } = await _supabase
+                .from('profiles')
+                .update({ status: newStatus })
+                .eq('id', userId); // Обновляем только пользователя с нужным ID
+
+            if (error) {
+                console.error('Ошибка обновления:', error);
+            } else {
+                // Если все хорошо, перезагружаем список, чтобы увидеть изменения
+                loadUsers();
+            }
+        };
+
+        // Подписка на изменения в реальном времени (Realtime)
+        _supabase
+            .channel('profiles-changes')
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'profiles' },
+                (payload) => {
+                    console.log('Изменение получено!', payload);
+                    // Здесь можно обновить статус конкретного пользователя на странице,
+                    // не перезагружая весь список. Для простоты сейчас мы просто перезагрузим список.
+                    loadUsers();
+                }
+            )
+            .subscribe();
+
+        // Загружаем пользователей при старте
+        loadUsers();
+    </script>
+</body>
+</html>
