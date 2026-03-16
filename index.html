@@ -50,6 +50,13 @@ button{
 .game{ background:#17a2b8; color:white;}
 .home{ background:#6c757d; color:white;}
 
+.google{
+    background:#4285F4;
+    color:white;
+    width:100%;
+    margin-top:10px;
+}
+
 .user-item{
     display:flex;
     align-items:center;
@@ -79,6 +86,8 @@ button{
 
 <div id="myInfo">Загрузка...</div>
 
+<button class="google" onclick="loginWithGoogle()">Войти через Google</button>
+
 <div class="buttons">
 <button class="study" onclick="changeStatus('Учусь','#28a745')">📚 Учусь</button>
 <button class="coffee" onclick="changeStatus('Кофе-брейк','#ffc107')">☕ Кофе</button>
@@ -103,9 +112,55 @@ const KEY = 'sb_publishable_eZ4Xu4ntRcyRUB2PEwABnw_V0yKabsx';
 
 const supabase = createClient(URL, KEY);
 
-const MY_ID = 'bb71dae8-cc67-4b9c-a364-e980f189fe27';
+let MY_ID = null;
+
+window.loginWithGoogle = async () => {
+
+const { data, error } = await supabase.auth.signInWithOAuth({
+provider: 'google'
+})
+
+if(error){
+console.error(error)
+}
+
+};
+
+async function getUser(){
+
+const { data } = await supabase.auth.getUser()
+
+if(data.user){
+
+MY_ID = data.user.id
+
+const { data: profile } = await supabase
+.from('profiles')
+.select('*')
+.eq('id', MY_ID)
+.single()
+
+if(!profile){
+
+await supabase.from('profiles').insert({
+id: MY_ID,
+username: data.user.user_metadata.full_name || data.user.email,
+status: "Онлайн",
+color: "#28a745"
+})
+
+}
+
+}
+
+}
 
 window.changeStatus = async (text, color) => {
+
+if(!MY_ID){
+alert("Сначала войдите через Google")
+return
+}
 
 const { error } = await supabase
 .from('profiles')
@@ -152,7 +207,9 @@ document.getElementById("myInfo").innerText = `Вы зашли как: ${me.user
 
 }
 
-fetchGroup();
+await getUser()
+
+fetchGroup()
 
 setInterval(fetchGroup, 5000);
 
