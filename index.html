@@ -110,20 +110,26 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const URL = 'https://ymgsmxwgsqmizwccljfn.supabase.co';
 const KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InltZ3NteHdnc3FtaXp3Y2NsamZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3NjE2NDAsImV4cCI6MjA4ODMzNzY0MH0.XgwYTFqTmWx9vIwbim2BUT1sdtWA2SIGuySOuZ2-TKM';
 
-const supabase = createClient(URL, KEY);
+cconst supabase = createClient(URL, KEY);
 
 let MY_ID = null;
 
 window.loginWithGoogle = async () => {
-
-const { data, error } = await supabase.auth.signInWithOAuth({
-provider: 'google'
-})
-
-if(error){
-console.error(error)
-}
-
+  try {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin
+      }
+    });
+    
+    if (error) {
+      console.error("Ошибка:", error);
+      alert("Ошибка входа: " + error.message);
+    }
+  } catch (err) {
+    console.error("Ошибка:", err);
+  }
 };
 
 async function getUser(){
