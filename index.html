@@ -1,7 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-    <title>Монитор статусов</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Status Monitor — Supabase</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * {
@@ -300,78 +302,222 @@
             }
         }
     </style>
-    
 </head>
 <body>
-    <h1>Статусы пользователей</h1>
-    <div id="users-list"></div>
+<div class="container">
+    <div class="header">
+        <h1>Монитор статусов</h1>
+        <div class="subtitle">Supabase + Realtime — синхронизация в реальном времени</div>
+    </div>
 
-    <script>
+    <div id="current-user-panel">
+        <!-- сюда подставится карточка текущего пользователя -->
+    </div>
+
+    <div class="users-section">
+        <div class="section-title">
+            <span>👥</span> Участники
+            <span class="realtime-badge" id="realtime-indicator">
+                <span>🟢</span> Live
+            </span>
+        </div>
+        <div id="users-list" class="users-grid">
+            <div style="text-align: center; padding: 40px; color: #94a3b8;">Загрузка пользователей...</div>
+        </div>
+    </div>
+
+    <div class="footer-note">
+        <span>⚡ Изменения видны у всех участников без перезагрузки</span>
+        <span>🔐 RLS: чтение + обновление</span>
+    </div>
+</div>
+
+<script>
+    // ====================== ⚠️ ПОДСТАВЬТЕ СВОИ ДАННЫЕ ======================
+    const SUPABASE_URL = 'https://swmxtnnheeumvlizwcxw.supabase.co';      // Ваш URL
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN3bXh0bm5oZWV1bXZsaXp3Y3h3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzNDQ3NjcsImV4cCI6MjA5MTkyMDc2N30.78c6ZLZnfgfLlC2jAUaNlvXPbXQ2mq5dpmI9o-91uKw';            // anon public key
+    const MY_USER_ID = 'ead24684-6dac-424a-9270-7b93aa019271';                // UUID из таблицы profiles
+    // ====================================================================
+
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // Текущий статус (для UI)
+    let currentStatus = 'online';
+
+    // Получение иконки для аватара
+    function getInitials(name) {
+        if (!name) return '👤';
+        return name.charAt(0).toUpperCase();
+    }
+
+    // Рендер статус-бейджа
+    function renderStatusBadge(status) {
+        const statusMap = {
+            'online': { text: 'Online', class: 'online', dot: 'online' },
+            'offline': { text: 'Offline', class: 'offline', dot: 'offline' },
+            'busy': { text: 'Busy', class: 'busy', dot: 'busy' }
+        };
+        const s = statusMap[status] || statusMap['offline'];
+        return `
+            <span class="status-badge ${s.class}">
+                <span class="status-dot ${s.dot}"></span>
+                ${s.text}
+            </span>
+        `;
+    }
+
+    // Загрузка и отображение всех пользователей
+    async function loadUsers() {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .order('username', { ascending: true });
+
+        if (error) {
+            console.error('Ошибка загрузки:', error);
+            document.getElementById('users-list').innerHTML = 
+                `<div style="text-align: center; padding: 40px; color: #ef4444;">❌ Ошибка: ${error.message}</div>`;
+            return;
+        }
+
+        if (!data || data.length === 0) {
+            document.getElementById('users-list').innerHTML = 
+                `<div style="text-align: center; padding: 40px; color: #94a3b8;">👀 Пока нет пользователей. Добавьте через Table Editor</div>`;
+            return;
+        }
+
+        // Отображаем всех
+        const container = document.getElementById('users-list');
+        container.innerHTML = '';
+
+        data.forEach(user => {
+            const isCurrentUser = (user.id === MY_USER_ID);
+            const card = document.createElement('div');
+            card.className = 'user-card';
+            card.innerHTML = `
+                <div class="user-left">
+                    <div class="user-avatar-small">${getInitials(user.username)}</div>
+                    <div>
+                        <div class="user-name">
+                            ${user.username}
+                            ${isCurrentUser ? '<span style="font-size: 11px; background:#e2e8f0; padding:2px 8px; border-radius:12px; margin-left:8px;">Это вы</span>' : ''}
+                        </div>
+                        <div style="font-size: 12px; color:#64748b; margin-top:4px;">
+                            ${user.id === MY_USER_ID ? 'Ваш ID: ' + user.id.substring(0, 8) + '…' : ''}
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    ${renderStatusBadge(user.status || 'offline')}
+                </div>
+            `;
+            container.appendChild(card);
+        });
+
+        // Также обновляем верхнюю панель текущего пользователя
+        const currentUserData = data.find(u => u.id === MY_USER_ID);
+        if (currentUserData) {
+            renderCurrentUserPanel(currentUserData);
+            currentStatus = currentUserData.status || 'online';
+        }
+    }
+
+    // Панель управления своим статусом (как на скринах)
+    function renderCurrentUserPanel(user) {
+        const panel = document.getElementById('current-user-panel');
+        panel.innerHTML = `
+            <div class="user-info-card">
+                <div class="user-details">
+                    <div class="avatar">${getInitials(user.username)}</div>
+                    <div class="info">
+                        <h3>${user.username}</h3>
+                        <p>Ваш текущий статус: <strong id="current-status-label">${user.status || 'online'}</strong></p>
+                        <div class="user-id">ID: ${user.id}</div>
+                    </div>
+                </div>
+                <div class="status-control">
+                    <button class="status-btn online" onclick="updateMyStatus('online')">🟢 Online</button>
+                    <button class="status-btn offline" onclick="updateMyStatus('offline')">⚫ Offline</button>
+                    <button class="status-btn busy" onclick="updateMyStatus('busy')">🔴 Busy</button>
+                </div>
+            </div>
+        `;
+    }
+
+    // Обновление статуса в Supabase
+    window.updateMyStatus = async function(newStatus) {
+        // Оптимистичное обновление UI
+        const label = document.getElementById('current-status-label');
+        if (label) label.innerText = newStatus;
         
-        // ⚠️ ПОДСТАВЬТЕ СВОИ ДАННЫЕ ⚠️
-        const SUPABASE_URL = 'https://swmxtnnheeumvlizwcxw.supabase.co';
-        const SUPABASE_ANON_KEY = 'sb_publishable_cXdhtvBWKmvzypHDsM-vMg_yFsgw8MN';
-        const MY_USER_ID = 'ead24684-6dac-424a-9270-7b93aa019271';
+        const { error } = await supabase
+            .from('profiles')
+            .update({ status: newStatus })
+            .eq('id', MY_USER_ID);
 
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-        // Загрузка всех пользователей
-        async function loadUsers() {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('*');
-            
-            if (error) {
-                console.error('Ошибка:', error);
-                return;
-            }
-            
-            const container = document.getElementById('users-list');
-            container.innerHTML = '';
-            
-            data.forEach(user => {
-                const div = document.createElement('div');
-                div.className = 'user';
-                div.innerHTML = `
-                    <strong>${user.username}</strong>
-                    <span class="${user.status === 'online' ? 'online' : 'offline'}">
-                        (${user.status || 'неизвестно'})
-                    </span>
-                    ${user.id === MY_USER_ID ? `
-                        <button onclick="setStatus('online')">🟢 Online</button>
-                        <button onclick="setStatus('offline')">⚫ Offline</button>
-                        <button onclick="setStatus('busy')">🔴 Busy</button>
-                    ` : ''}
-                `;
-                container.appendChild(div);
-            });
+        if (error) {
+            console.error('Ошибка обновления:', error);
+            alert('Не удалось обновить статус. Проверьте RLS политики для UPDATE.');
+            // Откат UI
+            if (label) label.innerText = currentStatus;
+        } else {
+            currentStatus = newStatus;
+            // Данные обновятся через Realtime, но для скорости обновим локально
+            loadUsers();
         }
+    };
 
-        // Обновление своего статуса
-        async function setStatus(newStatus) {
-            const { error } = await supabase
-                .from('profiles')
-                .update({ status: newStatus })
-                .eq('id', MY_USER_ID);
-            
-            if (error) {
-                console.error('Ошибка обновления:', error);
-            } else {
-                loadUsers(); // перезагружаем список
-            }
-        }
-
-        // Включение реального времени (Realtime)
+    // Подписка на реальное время (Realtime)
+    function setupRealtime() {
         const channel = supabase
             .channel('profiles-changes')
-            .on('postgres_changes', 
-                { event: '*', schema: 'public', table: 'profiles' },
-                () => loadUsers()
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'profiles'
+                },
+                (payload) => {
+                    console.log('Realtime update:', payload);
+                    loadUsers(); // Автоматически обновляем всех пользователей
+                    
+                    // Мигаем индикатором
+                    const indicator = document.getElementById('realtime-indicator');
+                    if (indicator) {
+                        indicator.style.opacity = '0.6';
+                        setTimeout(() => {
+                            if (indicator) indicator.style.opacity = '1';
+                        }, 200);
+                    }
+                }
             )
-            .subscribe();
+            .subscribe((status) => {
+                console.log('Realtime status:', status);
+            });
+    }
 
-        // Загрузка при старте
-        loadUsers();
-    </script>
+    // Инициализация
+    async function init() {
+        await loadUsers();
+        setupRealtime();
+    }
+
+    // Проверка, что всё настроено
+    if (!SUPABASE_URL.includes('ВАШ_ПРОЕКТ') && !SUPABASE_ANON_KEY.includes('ВАШ_ANON')) {
+        init();
+    } else {
+        document.getElementById('users-list').innerHTML = `
+            <div style="text-align: center; padding: 40px; background: #fff5f0; border-radius: 20px; color: #c2410c;">
+                ⚠️ <strong>Настройка не завершена</strong><br><br>
+                Замените в коде:<br>
+                <code style="background:#f1f5f9; padding:4px 8px; border-radius:8px;">SUPABASE_URL</code>, 
+                <code style="background:#f1f5f9; padding:4px 8px; border-radius:8px;">SUPABASE_ANON_KEY</code> и 
+                <code style="background:#f1f5f9; padding:4px 8px; border-radius:8px;">MY_USER_ID</code><br>
+                на свои данные из Supabase.
+            </div>
+        `;
+    }
+</script>
 </body>
 </html>
